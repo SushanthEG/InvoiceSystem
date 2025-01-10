@@ -10,6 +10,7 @@
 - **InvoiceManagementSystem.API**: Contains controllers and API configurations.
 - **InvoiceManagementSystem.Service**: Contains business logic and service classes.
 - **InvoiceManagementSystem.Data**: Contains Entity Framework Core DbContext and repository classes.
+- **InvoiceManagementSystem.Test** : Contains Testcases related to service method
 
 ## Technologies Used
 
