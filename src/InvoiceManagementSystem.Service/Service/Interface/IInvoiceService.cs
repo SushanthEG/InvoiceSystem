@@ -1,5 +1,4 @@
-﻿using InvoiceManagementSystem.Data.Entity;
-using InvoiceManagementSystem.Service.BusinessDomain;
+﻿using InvoiceManagementSystem.Service.BusinessDomain;
 
 namespace InvoiceManagementSystem.Service.Service.Interface
 {
@@ -10,5 +9,7 @@ namespace InvoiceManagementSystem.Service.Service.Interface
         Task<InvoiceDomain> GetInvoiceById(int id);
         Task PayInvoiceAsync(int id, double amount);
         Task ProcessOverdueInvoicesAsync(double lateFee, int overdueDays);
+        Task DeleteInvoiceAsync(int id);
+        Task UpdateInvoiceAsync(InvoiceDomain invoice);
     }
 }

@@ -2,8 +2,8 @@
 {
     public enum InvoicePaymentEnum
     {
-        pending = 1,
-        paid = 2,
-        voided = 3
+        Pending = 1,
+        Paid = 2,
+        Voided = 3
     }
 }
