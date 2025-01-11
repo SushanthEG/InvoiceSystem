@@ -6,6 +6,7 @@ using AutoMapper;
 using InvoiceManagementSystem.Data.Entity;
 using InvoiceManagementSystem.Service.Enum;
 using Microsoft.Extensions.Logging;
+using InvoiceManagementSystem.Service.Helper;
 
 namespace InvoiceManagementSystem.Service.Service
 {
@@ -29,16 +30,16 @@ namespace InvoiceManagementSystem.Service.Service
                 var invoice = new InvoiceDomain
                 {
                     Amount = amount,
-                    paidAmount = 0,
+                    PaidAmount = 0,
                     DueDate = dueDate,
-                    Status = InvoicePaymentEnum.pending.ToString()
+                    Status = InvoicePaymentEnum.Pending.ToString()
                 };
 
                 var invoiceEntity = m_mapper.Map<InvoiceEntity>(invoice);
                 await m_invoiceRepository.AddInvoiceAsync(invoiceEntity);
                 await m_invoiceRepository.SaveAsync();
-                invoice = m_mapper.Map<InvoiceDomain>(invoiceEntity);
-                return invoice;
+
+                return m_mapper.Map<InvoiceDomain>(invoiceEntity);
             }
             catch (Exception ex)
             {
@@ -52,8 +53,7 @@ namespace InvoiceManagementSystem.Service.Service
             try
             {
                 var invoiceEntities = await m_invoiceRepository.GetAllInvoicesAsync();
-                var invoiceList = m_mapper.Map<List<InvoiceDomain>>(invoiceEntities);
-                return invoiceList;
+                return m_mapper.Map<List<InvoiceDomain>>(invoiceEntities);
             }
             catch (Exception ex)
             {
@@ -66,13 +66,12 @@ namespace InvoiceManagementSystem.Service.Service
         {
             try
             {
-                var invoiceEntities = await m_invoiceRepository.GetInvoiceAsync(id);
-                var invoiceList = m_mapper.Map<InvoiceDomain>(invoiceEntities);
-                return invoiceList;
+                var invoiceEntity = await m_invoiceRepository.GetInvoiceAsync(id);
+                return m_mapper.Map<InvoiceDomain>(invoiceEntity);
             }
             catch (Exception ex)
             {
-                m_logger.LogError(ex, "An error occurred while retrieving all invoices.");
+                m_logger.LogError(ex, "An error occurred while retrieving the invoice with ID {InvoiceId}", id);
                 throw;
             }
         }
@@ -82,13 +81,19 @@ namespace InvoiceManagementSystem.Service.Service
             try
             {
                 var invoice = await m_invoiceRepository.GetInvoiceAsync(id);
-                if (invoice == null || invoice.Status != "pending") return;
+                if (invoice == null || invoice.Status != InvoicePaymentEnum.Pending.ToString()) return;
 
-                invoice.PaidAmount = invoice.PaidAmount + amount;
+                invoice.PaidAmount = InvoiceHelper.PayInvoice(amount, invoice);
                 if (invoice.PaidAmount >= invoice.Amount)
                 {
-                    invoice.Status = InvoicePaymentEnum.paid.ToString();
+                    invoice.Status = InvoicePaymentEnum.Paid.ToString();
+                    if (invoice.PaidAmount > invoice.Amount)
+                    {
+                        double overpaidAmount = invoice.PaidAmount - invoice.Amount;
+                        m_logger.LogInformation("Invoice with ID {InvoiceId} has been overpaid by {OverpaidAmount}.", id, overpaidAmount);
+                    }
                 }
+
                 await m_invoiceRepository.UpdateInvoiceAsync(invoice);
                 await m_invoiceRepository.SaveAsync();
             }
@@ -103,31 +108,98 @@ namespace InvoiceManagementSystem.Service.Service
         {
             try
             {
-                var overdueInvoices = (await m_invoiceRepository.GetAllInvoicesAsync())
-                    .Where(i => i.Status == "pending" && i.DueDate.AddDays(overdueDays) < DateTime.Now)
-                    .ToList();
+                var overdueInvoices = await GetOverdueInvoicesAsync(overdueDays);
 
                 foreach (var invoice in overdueInvoices)
                 {
-                    if (invoice.PaidAmount > 0)
-                    {
-                        var newAmount = invoice.Amount - invoice.PaidAmount + lateFee;
-                        invoice.Status = InvoicePaymentEnum.paid.ToString();
-                        await CreateInvoiceAsync(newAmount, DateTime.Now.AddDays(overdueDays));
-                    }
-                    else
-                    {
-                        var newAmount = invoice.Amount + lateFee;
-                        invoice.Status = InvoicePaymentEnum.voided.ToString();
-                        await CreateInvoiceAsync(newAmount, DateTime.Now.AddDays(overdueDays));
-                    }
-                    await m_invoiceRepository.UpdateInvoiceAsync(invoice);
+                    await ProcessSingleOverdueInvoiceAsync(invoice, lateFee, overdueDays);
                 }
+
                 await m_invoiceRepository.SaveAsync();
             }
             catch (Exception ex)
             {
                 m_logger.LogError(ex, "An error occurred while processing overdue invoices.");
+                throw;
+            }
+        }
+
+        private async Task<List<InvoiceEntity>> GetOverdueInvoicesAsync(int overdueDays)
+        {
+            var allInvoices = await m_invoiceRepository.GetAllInvoicesAsync();
+            return allInvoices
+                .Where(i => i.Status == InvoicePaymentEnum.Pending.ToString() && i.DueDate.AddDays(overdueDays) < DateTime.Now)
+                .ToList();
+        }
+
+        private async Task ProcessSingleOverdueInvoiceAsync(InvoiceEntity invoice, double lateFee, int overdueDays)
+        {
+            if (invoice.PaidAmount > 0)
+            {
+                await HandlePartialPaymentAsync(invoice, lateFee, overdueDays);
+            }
+            else
+            {
+                await HandleNoPaymentAsync(invoice, lateFee, overdueDays);
+            }
+
+            await m_invoiceRepository.UpdateInvoiceAsync(invoice);
+            await m_invoiceRepository.SaveAsync();
+        }
+
+        private async Task HandlePartialPaymentAsync(InvoiceEntity invoice, double lateFee, int overdueDays)
+        {
+            double newAmount = InvoiceHelper.LateFeeWithPartialPay(lateFee, invoice);
+            invoice.Status = InvoicePaymentEnum.Paid.ToString();
+            await CreateInvoiceAsync(newAmount, DateTime.Now.AddDays(overdueDays));
+        }
+
+        private async Task HandleNoPaymentAsync(InvoiceEntity invoice, double lateFee, int overdueDays)
+        {
+            double newAmount = InvoiceHelper.LateFeeWithWithoutPay(lateFee, invoice);
+            invoice.Status = InvoicePaymentEnum.Voided.ToString();
+            await CreateInvoiceAsync(newAmount, DateTime.Now.AddDays(overdueDays));
+        }
+
+        public async Task DeleteInvoiceAsync(int id)
+        {
+            try
+            {
+                var invoice = await m_invoiceRepository.GetInvoiceAsync(id);
+                if (invoice == null) return;
+
+                await m_invoiceRepository.DeleteInvoiceAsync(id);
+                await m_invoiceRepository.SaveAsync();
+            }
+            catch (Exception ex)
+            {
+                m_logger.LogError(ex, "An error occurred while deleting the invoice with ID {InvoiceId}", id);
+                throw;
+            }
+        }
+
+        public async Task UpdateInvoiceAsync(InvoiceDomain invoice)
+        {
+            try
+            {
+                var existingInvoice = await m_invoiceRepository.GetInvoiceAsync(invoice.Id);
+                if (existingInvoice == null)
+                {
+                    m_logger.LogWarning("Invoice with ID {InvoiceId} not found.", invoice.Id);
+                    return;
+                }
+
+                existingInvoice.Amount = invoice.Amount;
+                existingInvoice.PaidAmount = invoice.PaidAmount;
+                existingInvoice.DueDate = invoice.DueDate;
+                existingInvoice.Status = invoice.Status;
+
+                await m_invoiceRepository.UpdateInvoiceAsync(existingInvoice);
+                await m_invoiceRepository.SaveAsync();
+            }
+            catch (Exception ex)
+            {
+                m_logger.LogError(ex, "An error occurred while updating the invoice with ID {InvoiceId}", invoice.Id);
                 throw;
             }
         }

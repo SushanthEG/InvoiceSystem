@@ -8,6 +8,7 @@ namespace InvoiceManagementSystem.Data.Repository.Interface
         Task<List<InvoiceEntity>> GetAllInvoicesAsync();
         Task AddInvoiceAsync(InvoiceEntity invoice);
         Task UpdateInvoiceAsync(InvoiceEntity invoice);
+        Task DeleteInvoiceAsync(int id); 
         Task SaveAsync();
     }
 }

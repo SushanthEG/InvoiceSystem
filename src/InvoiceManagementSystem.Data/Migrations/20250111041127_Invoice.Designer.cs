@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace InvoiceManagementSystem.Data.Migrations
 {
     [DbContext(typeof(InvoiceDbContext))]
-    [Migration("20250110084916_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20250111041127_Invoice")]
+    partial class Invoice
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -44,11 +44,12 @@ namespace InvoiceManagementSystem.Data.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.HasKey("Id");
 
-                    b.ToTable("Invoice");
+                    b.ToTable("Invoices");
                 });
 #pragma warning restore 612, 618
         }
