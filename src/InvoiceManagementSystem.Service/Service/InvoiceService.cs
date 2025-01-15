@@ -82,15 +82,12 @@ namespace InvoiceManagementSystem.Service.Service
             {
                 var invoice = await m_invoiceRepository.GetInvoiceAsync(id);
                 if (amount > invoice.Amount) return;
-                invoice.Amount = invoice.Amount - amount;
-                invoice.PaidAmount = invoice.PaidAmount + amount;
+                InvoiceHelper.PayInvoiceCalculate(amount, invoice);
 
                 if ((invoice.Amount == 0))
-                { 
+                {
                     invoice.Status = InvoicePaymentEnum.Paid.ToString();
                 }
-               
-
                 await m_invoiceRepository.UpdateInvoiceAsync(invoice);
                 await m_invoiceRepository.SaveAsync();
             }
@@ -100,7 +97,7 @@ namespace InvoiceManagementSystem.Service.Service
                 throw;
             }
         }
-
+        
         public async Task ProcessOverdueInvoicesAsync(double lateFee, int overdueDays)
         {
             try
@@ -147,14 +144,14 @@ namespace InvoiceManagementSystem.Service.Service
 
         private async Task HandlePartialPaymentAsync(InvoiceEntity invoice, double lateFee, int overdueDays)
         {
-            double newAmount = InvoiceHelper.LateFeeWithWithoutPay(lateFee, invoice);
+            double newAmount = InvoiceHelper.LateFeePay(lateFee, invoice);
             invoice.Status = InvoicePaymentEnum.Paid.ToString();
             await CreateInvoiceAsync(newAmount, DateTime.Now.AddDays(overdueDays));
         }
 
         private async Task HandleNoPaymentAsync(InvoiceEntity invoice, double lateFee, int overdueDays)
         {
-            double newAmount = InvoiceHelper.LateFeeWithWithoutPay(lateFee, invoice);
+            double newAmount = InvoiceHelper.LateFeePay(lateFee, invoice);
             invoice.Status = InvoicePaymentEnum.Voided.ToString();
             await CreateInvoiceAsync(newAmount, DateTime.Now.AddDays(overdueDays));
         }
