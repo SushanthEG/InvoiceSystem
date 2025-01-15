@@ -81,18 +81,15 @@ namespace InvoiceManagementSystem.Service.Service
             try
             {
                 var invoice = await m_invoiceRepository.GetInvoiceAsync(id);
-                if (invoice == null || invoice.Status != InvoicePaymentEnum.Pending.ToString()) return;
+                if (amount > invoice.Amount) return;
+                invoice.Amount = invoice.Amount - amount;
+                invoice.PaidAmount = invoice.PaidAmount + amount;
 
-                invoice.PaidAmount = InvoiceHelper.PayInvoice(amount, invoice);
-                if (invoice.PaidAmount >= invoice.Amount)
-                {
+                if ((invoice.Amount == 0))
+                { 
                     invoice.Status = InvoicePaymentEnum.Paid.ToString();
-                    if (invoice.PaidAmount > invoice.Amount)
-                    {
-                        double overpaidAmount = invoice.PaidAmount - invoice.Amount;
-                        m_logger.LogInformation("Invoice with ID {InvoiceId} has been overpaid by {OverpaidAmount}.", id, overpaidAmount);
-                    }
                 }
+               
 
                 await m_invoiceRepository.UpdateInvoiceAsync(invoice);
                 await m_invoiceRepository.SaveAsync();
@@ -112,6 +109,7 @@ namespace InvoiceManagementSystem.Service.Service
 
                 foreach (var invoice in overdueInvoices)
                 {
+                    if(invoice.Status == InvoicePaymentEnum.Pending.ToString())
                     await ProcessSingleOverdueInvoiceAsync(invoice, lateFee, overdueDays);
                 }
 
@@ -149,7 +147,7 @@ namespace InvoiceManagementSystem.Service.Service
 
         private async Task HandlePartialPaymentAsync(InvoiceEntity invoice, double lateFee, int overdueDays)
         {
-            double newAmount = InvoiceHelper.LateFeeWithPartialPay(lateFee, invoice);
+            double newAmount = InvoiceHelper.LateFeeWithWithoutPay(lateFee, invoice);
             invoice.Status = InvoicePaymentEnum.Paid.ToString();
             await CreateInvoiceAsync(newAmount, DateTime.Now.AddDays(overdueDays));
         }
